@@ -23,6 +23,8 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
 LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+CORRIDOR = math.degrees(60.) # within this angle to the left and right of the ego we accept base_waypoints
+INVERSE_WP_DENSITY = 5
 
 
 class WaypointUpdater(object):
@@ -33,24 +35,79 @@ class WaypointUpdater(object):
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
-
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
         # TODO: Add other member variables you need below
+        self.pose = None # pose.position, pose.orientation (quaternion)
+        self.base_waypoints = None # list of pose's.
+        self.closest_before = 0
+        self.frame_id = None
 
-        rospy.spin()
+        self.frequency = 10
+        # TODO: Needs to be adjusted based on target speed
+        self.tl_slow_down_dst = 40
+        self.tl_stopp_dst = 3
+        self.tl_idx = -1 #nearest traffic light with red status
+
+        #rospy.spin()
+        self.loop()
+
+
+    def loop(self):
+        # publish updates on fixed frequency as in dbw_node
+        rate = rospy.Rate(self.frequency) # 50Hz
+        while not rospy.is_shutdown():
+            if self.base_waypoints != None and self.pose != None:
+                #(x,y,z) = self.quaternion_to_euler_angle()
+
+                closest = self.closest_wp(self.closest_before)
+
+                # TODO this is a very basic setup of the Lane
+                finalwps = Lane()
+                finalwps.header.stamp = rospy.Time.now()
+                finalwps.header.frame_id = self.frame_id
+
+                i = 0
+                idx = closest
+
+                while i < LOOKAHEAD_WPS:
+                    if idx >= len(self.base_waypoints) - 1:
+                        idx = 0
+
+                    velocity = self.base_waypoints[idx].twist.twist.linear.x
+
+                    self.set_waypoint_velocity(self.base_waypoints, idx, velocity)
+                    finalwps.waypoints.append(self.base_waypoints[idx])
+
+                    i = i + 1
+                    idx = idx + 1
+
+                self.closest_before = closest
+                self.final_waypoints_pub.publish(finalwps)
+
+            rate.sleep()
+    
+
+
 
     def pose_cb(self, msg):
         # TODO: Implement
+        self.pose = msg.pose
         pass
 
     def waypoints_cb(self, waypoints):
         # TODO: Implement
+        self.base_waypoints = waypoints.waypoints
+        self.frame_id = waypoints.header.frame_id
+
         pass
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
+        if msg.data != self.tl_idx:
+            self.tl_idx = msg.data
         pass
 
     def obstacle_cb(self, msg):
