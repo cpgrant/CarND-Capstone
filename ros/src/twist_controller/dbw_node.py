@@ -7,6 +7,8 @@ from geometry_msgs.msg import TwistStamped
 import math
 
 from twist_controller import Controller
+from pid import PID
+from yaw_controller import YawController
 
 '''
 You can build this node only after you have built (or partially built) the `waypoint_updater` node.
@@ -53,15 +55,40 @@ class DBWNode(object):
         self.brake_pub = rospy.Publisher('/vehicle/brake_cmd',
                                          BrakeCmd, queue_size=1)
 
-        # TODO: Create `TwistController` object
-        # self.controller = TwistController(<Arguments you wish to provide>)
-
         # TODO: Subscribe to all the topics you need to
+
+        rospy.Subscriber('/current_velocity', TwistStamped, self.current_velocity_cb)
+        rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb)
+        rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cmd_cb)
+
+        # TODO maybe adjust min_speed
+
+        self.frequency = 5
+
+        min_speed = 0 # brake_deadband # ??
+        yawCont = YawController(wheel_base, steer_ratio, min_speed, max_lat_accel, max_steer_angle)
+        veloPID = PID(0.2, 0.001, 0.05, decel_limit, accel_limit)
+
+
+        #  TODO: Create `TwistController` object
+        # self.controller = TwistController(<Arguments you wish to provide>)
+        self.controller = Controller(veloPID, yawCont)
+
+        self.cur_linvel = 0
+        self.lin_vel = 0
+        self.ang_vel = 0
+
+        self.is_dbw_enabled = False # the simulator comes all the time with the "manual" box ticked
+
+        self.throttle_before = 0.0
+        self.brake_before = 0.0
+        self.steering_before = 0.0
 
         self.loop()
 
     def loop(self):
-        rate = rospy.Rate(50) # 50Hz
+
+        rate = rospy.Rate(self.frequency) # 50Hz
         while not rospy.is_shutdown():
             # TODO: Get predicted throttle, brake, and steering using `twist_controller`
             # You should only publish the control commands if dbw is enabled
@@ -70,31 +97,64 @@ class DBWNode(object):
             #                                                     <current linear velocity>,
             #                                                     <dbw status>,
             #                                                     <any other argument you need>)
-            # if self.is_dbw_enabled:
-            throttle = 0.95
-            brake =0.0
-            steering = 0.0
-            self.publish(throttle, brake, steering)
+
+            throttle, brake, steering = self.controller.control(self.lin_vel, self.ang_vel, self.cur_linvel, self.is_dbw_enabled, 1./self.frequency)
+
+
+            # steering = -0.2 --> vehicle goes to the right
+            # steering = 0.2 --> vehicle goes to the left
+
+            if self.is_dbw_enabled:
+                self.publish(throttle, brake, steering)
 
             rate.sleep()
 
+    def current_velocity_cb(self, msg):
+        assert(msg != None)
+        self.cur_linvel = msg.twist.linear.x
+        pass
+
+    def dbw_enabled_cb(self, msg):
+        self.is_dbw_enabled = msg.data
+        #rospy.loginfo("DBW active: ", msg)
+        print(msg)
+        pass
+
+    def twist_cmd_cb(self, msg):
+        assert(msg != None)
+        self.lin_vel = msg.twist.linear.x
+        self.ang_vel = msg.twist.angular.z
+        pass
+
     def publish(self, throttle, brake, steer):
+
+        # somehow it works better when the frequency of updates is lower, issuing only updates
+
         tcmd = ThrottleCmd()
         tcmd.enable = True
         tcmd.pedal_cmd_type = ThrottleCmd.CMD_PERCENT
         tcmd.pedal_cmd = throttle
-        self.throttle_pub.publish(tcmd)
+
+        if abs(throttle - self.throttle_before) > 0.05:
+            self.throttle_before = throttle
+            self.throttle_pub.publish(tcmd)
 
         scmd = SteeringCmd()
         scmd.enable = True
         scmd.steering_wheel_angle_cmd = steer
-        self.steer_pub.publish(scmd)
+
+        if abs(steer - self.steering_before) > 0.05:
+            self.steering_before = steer
+            self.steer_pub.publish(scmd)
 
         bcmd = BrakeCmd()
         bcmd.enable = True
         bcmd.pedal_cmd_type = BrakeCmd.CMD_TORQUE
         bcmd.pedal_cmd = brake
-        self.brake_pub.publish(bcmd)
+
+        if abs(brake - self.brake_before) > 0.05:
+            self.brake_before = brake
+            self.brake_pub.publish(bcmd)
 
 
 if __name__ == '__main__':
