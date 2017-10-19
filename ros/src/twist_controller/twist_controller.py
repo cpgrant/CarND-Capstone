@@ -1,34 +1,23 @@
 
+from lowpass import LowPassFilter
+from pid import PID
+
 GAS_DENSITY = 2.858
 ONE_MPH = 0.44704
 
 
 class Controller(object):
-
-	'''
-    def __init__(self, *args, **kwargs):
-        # TODO: Implement
-     
-        pass
-
-    def control(self, *args, **kwargs):
-        # TODO: Change the arg, kwarg list to suit your needs
-        # Return throttle, brake, steer
-        return 1., 0., 0.
-	'''
-
     def __init__(self, veloPID, yawCont):
 
     	self.veloPID = veloPID
     	self.yawCont = yawCont
 
-    	self.lp_throttle = LowPassFilter(0.2, 0.1)   
-
+    	self.lp_throttle = LowPassFilter(0.2, 0.1)
 
     def control(self, lin_vel, ang_vel, cur_vel, is_dbw_enabled, delta_t):
-    	
     	# cur_vel is in m/s
-    	# print("cur_vel: %f", cur_vel)
+
+    	print("cur_vel: %f", cur_vel)
 
         #cur_vel = cur_vel
         vel_error = lin_vel - cur_vel
