@@ -132,6 +132,34 @@ class WaypointUpdater(object):
         return dist
 
 
+    def closest_wp(self, closest_before):
+        dist = 999999999.
+        closest = None
+
+        dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
+        #alphal = lambda a, b: math.atan2((a.y - b.y), (a.x - b.x))
+
+        # limit the search space
+        upper = min(len(self.base_waypoints), closest_before + 700)
+        lower = max(0, closest_before - 50)
+
+        lower = 0
+        upper = len(self.base_waypoints)
+
+        for i in range(lower, upper):
+            d = dl(self.base_waypoints[i].pose.pose.position, self.pose.position)
+            #a = alphal(self.base_waypoints[i].pose.pose.position, self.pose.position)
+
+            # TODO: check if there is an offset
+            #if d < dist and ((z - CORRIDOR) < a) and ((z+CORRIDOR) > a):
+
+            if d < dist:
+                dist = d
+                closest = i
+
+        return closest
+
+
 if __name__ == '__main__':
     try:
         WaypointUpdater()
